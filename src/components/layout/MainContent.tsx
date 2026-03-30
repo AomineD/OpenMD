@@ -2,6 +2,7 @@ import { useDocumentStore } from "@/stores/documentStore";
 import MarkdownPreview from "@/components/viewer/MarkdownPreview";
 import MonacoEditor from "@/components/editor/MonacoEditor";
 import EditFAB from "@/components/viewer/EditFAB";
+import PlanFAB from "@/components/viewer/PlanFAB";
 
 export default function MainContent() {
   const documents = useDocumentStore((state) => state.documents);
@@ -40,6 +41,7 @@ export default function MainContent() {
         />
       )}
       <EditFAB />
+      <PlanFAB />
     </main>
   );
 }

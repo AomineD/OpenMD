@@ -21,6 +21,7 @@ Thumbs.db
 planification/
 .claude/
 .kiro/
+.plans/
 
 # Sensitive/planning markdown files
 CLAUDE.md

@@ -1,0 +1,109 @@
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import TopBar from "@/components/layout/TopBar";
+import TabsBar from "@/components/layout/TabsBar";
+import Sidebar from "@/components/layout/Sidebar";
+import MainContent from "@/components/layout/MainContent";
+import StatusBar from "@/components/layout/StatusBar";
+import UnsavedChangesDialog from "@/components/dialogs/UnsavedChangesDialog";
+import SettingsDialog from "@/components/settings/SettingsDialog";
+import UpdateDialog from "@/components/dialogs/UpdateDialog";
+import AboutDialog from "@/components/dialogs/AboutDialog";
+import { UnsavedGuardContext } from "@/contexts/unsavedGuardContext";
+import { useFileOpen } from "@/hooks/useFileOpen";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useAutoSave } from "@/hooks/useAutoSave";
+import { useUpdateChecker } from "@/hooks/useUpdateChecker";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { useHistoryStore } from "@/stores/historyStore";
+import { restoreWindowState } from "@/hooks/useWindowState";
+
+export default function App() {
+  const { openByPath } = useFileOpen();
+  const {
+    dialogState,
+    handleDialogResult,
+    guardedCloseDocument,
+    guardWindowClose,
+  } = useUnsavedChangesGuard();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const {
+    updateInfo,
+    isChecking: _isChecking,
+    downloadProgress,
+    installComplete,
+    checkForUpdates,
+    downloadAndInstall,
+    dismissUpdate,
+  } = useUpdateChecker();
+
+  // Load persistent state and restore window on mount
+  useEffect(() => {
+    useSettingsStore.getState().loadFromDisk();
+    useHistoryStore.getState().loadFromDisk();
+    restoreWindowState();
+  }, []);
+
+  // Auto-save hook
+  useAutoSave();
+
+  // Listen for file open events from Rust (CLI args + single-instance forwarding)
+  useEffect(() => {
+    const unlisten = listen<string>("open-file", (event) => {
+      if (event.payload) {
+        openByPath(event.payload);
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [openByPath]);
+
+  // Intercept OS window close (Alt+F4, title bar X) to guard dirty documents
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const unlisten = appWindow.onCloseRequested(async (event) => {
+      event.preventDefault(); // must be synchronous before await
+      await guardWindowClose();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [guardWindowClose]);
+
+  return (
+    <UnsavedGuardContext.Provider value={{ guardedCloseDocument }}>
+      <div className="flex flex-col h-screen overflow-hidden bg-zinc-950 text-slate-50">
+        {/* Top chrome */}
+        <TopBar
+          onSettingsOpen={() => setSettingsOpen(true)}
+          onCheckUpdates={checkForUpdates}
+          onAboutOpen={() => setAboutOpen(true)}
+        />
+        <TabsBar />
+
+        {/* Main workspace */}
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <MainContent />
+        </div>
+
+        {/* Bottom chrome */}
+        <StatusBar />
+      </div>
+      <UnsavedChangesDialog state={dialogState} onResult={handleDialogResult} />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <UpdateDialog
+        info={updateInfo}
+        installComplete={installComplete}
+        onInstall={downloadAndInstall}
+        onDismiss={dismissUpdate}
+        downloadProgress={downloadProgress}
+      />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+    </UnsavedGuardContext.Provider>
+  );
+}

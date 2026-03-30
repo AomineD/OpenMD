@@ -1,0 +1,33 @@
+node_modules/
+# TypeScript build artifacts from tsconfig composite
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+vitest.config.js
+vitest.config.d.ts
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+src-tauri/target/
+src-tauri/WixTools/
+*.pdb
+.DS_Store
+Thumbs.db
+
+# Planning & tooling (not for repo)
+planification/
+.claude/
+.kiro/
+
+# Sensitive/planning markdown files
+CLAUDE.md
+RAG.md
+SPECFORGE_AGENT_INSTRUCTIONS.md
+SPECFORGE_BUILTIN_RAG.md
+CONTRIBUTING.md
+
+# Screenshots (not for repo)
+Screenshot_*.png

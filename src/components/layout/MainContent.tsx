@@ -14,9 +14,12 @@ export default function MainContent() {
     return (
       <main className="flex-1 overflow-hidden bg-zinc-950 flex items-center justify-center">
         <div className="text-center select-none space-y-3">
-          <div className="text-8xl font-black text-cyan-400/15 tracking-tighter leading-none">
-            MD
-          </div>
+          <img
+            src="/icon.png"
+            alt="OpenMD"
+            className="w-24 h-24 mx-auto opacity-15"
+            draggable={false}
+          />
           <p className="text-slate-500 text-sm font-medium">No file open</p>
           <p className="text-slate-700 text-xs">
             Press{" "}

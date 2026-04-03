@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useUnsavedGuard } from "@/contexts/unsavedGuardContext";
-import { X } from "lucide-react";
+import { useRefreshDocuments } from "@/hooks/useRefreshDocuments";
+import { X, RefreshCw } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -18,6 +20,14 @@ export default function TabsBar() {
   );
   const closeAllDocuments = useDocumentStore((state) => state.closeAllDocuments);
   const { guardedCloseDocument } = useUnsavedGuard();
+  const { refreshActiveDocument, refreshSingleDocument } = useRefreshDocuments();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshActiveDocument();
+    setTimeout(() => setIsRefreshing(false), 400);
+  };
 
   if (documents.length === 0) {
     return (
@@ -30,7 +40,8 @@ export default function TabsBar() {
   }
 
   return (
-    <div className="h-9 flex items-center bg-zinc-900 border-b border-zinc-800 shrink-0 overflow-x-auto scrollbar-thin">
+    <div className="h-9 flex items-center bg-zinc-900 border-b border-zinc-800 shrink-0">
+      <div className="flex-1 flex items-center overflow-x-auto scrollbar-thin">
       {documents.map((doc) => {
         const isActive = doc.id === activeDocumentId;
 
@@ -85,6 +96,14 @@ export default function TabsBar() {
 
             <ContextMenuContent className="bg-zinc-900 border-zinc-700 text-slate-200 min-w-40">
               <ContextMenuItem
+                onClick={() => refreshSingleDocument(doc.id)}
+                className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer"
+                disabled={doc.isDirty}
+              >
+                Refresh
+              </ContextMenuItem>
+              <ContextMenuSeparator className="bg-zinc-700" />
+              <ContextMenuItem
                 onClick={() => guardedCloseDocument(doc.id)}
                 className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer"
               >
@@ -108,6 +127,16 @@ export default function TabsBar() {
           </ContextMenu>
         );
       })}
+      </div>
+
+      <button
+        onClick={handleRefresh}
+        disabled={!activeDocumentId}
+        className="px-2 h-9 flex items-center text-slate-400 hover:text-slate-50 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+        title="Refresh current file (F5)"
+      >
+        <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+      </button>
     </div>
   );
 }

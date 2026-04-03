@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import type { OpenDocument } from "./types";
-import { extractFileName } from "@/lib/fileOperations";
+import { exists } from "@tauri-apps/plugin-fs";
+import type { OpenDocument, SessionData } from "./types";
+import { extractFileName, readMarkdownFile } from "@/lib/fileOperations";
+import { loadJSON, saveJSON } from "@/lib/persistence";
 
 interface DocumentState {
   documents: OpenDocument[];
@@ -18,6 +20,9 @@ interface DocumentState {
   markSaved: (id: string) => void;
   setMode: (id: string, mode: "view" | "edit") => void;
   updatePath: (id: string, path: string, fileName: string) => void;
+  refreshContent: (id: string, content: string) => void;
+  saveSession: () => Promise<void>;
+  restoreSession: () => Promise<void>;
 }
 
 export const useDocumentStore = create<DocumentState>()(
@@ -116,6 +121,64 @@ export const useDocumentStore = create<DocumentState>()(
             doc.id === id ? { ...doc, path, fileName } : doc
           ),
         }));
+      },
+
+      refreshContent: (id, content) => {
+        set((state) => ({
+          documents: state.documents.map((doc) =>
+            doc.id === id ? { ...doc, content } : doc
+          ),
+        }));
+      },
+
+      saveSession: async () => {
+        const { documents, activeDocumentId } = get();
+        const activeDoc = documents.find((d) => d.id === activeDocumentId);
+        const session: SessionData = {
+          tabs: documents.map((d) => ({ path: d.path, mode: d.mode })),
+          activeTabPath: activeDoc?.path ?? null,
+        };
+        await saveJSON("open-tabs.json", session);
+      },
+
+      restoreSession: async () => {
+        const session = await loadJSON<SessionData>("open-tabs.json", {
+          tabs: [],
+          activeTabPath: null,
+        });
+        if (session.tabs.length === 0) return;
+
+        const openedDocs: OpenDocument[] = [];
+
+        for (const tab of session.tabs) {
+          try {
+            const fileExists = await exists(tab.path);
+            if (!fileExists) continue;
+            const content = await readMarkdownFile(tab.path);
+            openedDocs.push({
+              id: crypto.randomUUID(),
+              path: tab.path,
+              fileName: extractFileName(tab.path),
+              content,
+              mode: tab.mode,
+              isDirty: false,
+              openedAt: Date.now(),
+            });
+          } catch (e) {
+            console.error("[documentStore] Failed to restore tab:", tab.path, e);
+          }
+        }
+
+        if (openedDocs.length === 0) return;
+
+        const activeDoc = session.activeTabPath
+          ? openedDocs.find((d) => d.path === session.activeTabPath)
+          : null;
+
+        set({
+          documents: openedDocs,
+          activeDocumentId: activeDoc?.id ?? openedDocs[0].id,
+        });
       },
     }),
     {

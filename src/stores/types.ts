@@ -25,3 +25,13 @@ export interface RecentDocument {
   /** Unix timestamp of last open */
   lastOpenedAt: number;
 }
+
+export interface SessionTab {
+  path: string;
+  mode: "view" | "edit";
+}
+
+export interface SessionData {
+  tabs: SessionTab[];
+  activeTabPath: string | null;
+}

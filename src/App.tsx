@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import TopBar from "@/components/layout/TopBar";
 import TabsBar from "@/components/layout/TabsBar";
@@ -15,12 +16,15 @@ import { useFileOpen } from "@/hooks/useFileOpen";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useUpdateChecker } from "@/hooks/useUpdateChecker";
+import { useRefreshDocuments } from "@/hooks/useRefreshDocuments";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useHistoryStore } from "@/stores/historyStore";
+import { useDocumentStore } from "@/stores/documentStore";
 import { restoreWindowState } from "@/hooks/useWindowState";
 
 export default function App() {
   const { openByPath } = useFileOpen();
+  const { refreshAllDocuments, refreshActiveDocument } = useRefreshDocuments();
   const {
     dialogState,
     handleDialogResult,
@@ -40,11 +44,17 @@ export default function App() {
     dismissUpdate,
   } = useUpdateChecker();
 
-  // Load persistent state and restore window on mount
+  // Load persistent state, restore window, restore session, and open CLI file if passed
   useEffect(() => {
-    useSettingsStore.getState().loadFromDisk();
-    useHistoryStore.getState().loadFromDisk();
-    restoreWindowState();
+    async function init() {
+      useSettingsStore.getState().loadFromDisk();
+      useHistoryStore.getState().loadFromDisk();
+      await restoreWindowState();
+      await useDocumentStore.getState().restoreSession();
+      const cliPath = await invoke<string | null>("get_initial_file_path");
+      if (cliPath) openByPath(cliPath);
+    }
+    init();
   }, []);
 
   // Auto-save hook
@@ -61,6 +71,21 @@ export default function App() {
       unlisten.then((fn) => fn());
     };
   }, [openByPath]);
+
+  // Auto-refresh open documents when window regains focus; save session on blur
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const unlisten = appWindow.onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        refreshAllDocuments();
+      } else {
+        useDocumentStore.getState().saveSession();
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [refreshAllDocuments]);
 
   // Intercept OS window close (Alt+F4, title bar X) to guard dirty documents
   useEffect(() => {
@@ -82,6 +107,7 @@ export default function App() {
           onSettingsOpen={() => setSettingsOpen(true)}
           onCheckUpdates={checkForUpdates}
           onAboutOpen={() => setAboutOpen(true)}
+          onRefreshActive={refreshActiveDocument}
         />
         <TabsBar />
 

@@ -15,12 +15,14 @@ interface TopBarProps {
   onSettingsOpen: () => void;
   onCheckUpdates?: () => void;
   onAboutOpen?: () => void;
+  onRefreshActive?: () => void;
 }
 
 export default function TopBar({
   onSettingsOpen,
   onCheckUpdates,
   onAboutOpen,
+  onRefreshActive,
 }: TopBarProps) {
   const { openFromDialog, openByPath } = useFileOpen();
   const closeAllDocuments = useDocumentStore((state) => state.closeAllDocuments);
@@ -84,6 +86,10 @@ export default function TopBar({
           if (doc) setMode(activeDocumentId, doc.mode === "view" ? "edit" : "view");
         }
       }
+      if (e.key === "F5") {
+        e.preventDefault();
+        onRefreshActive?.();
+      }
       if (e.ctrlKey && e.key === "b") {
         e.preventDefault();
         setSetting("sidebarVisible", !settings.sidebarVisible);
@@ -125,6 +131,7 @@ export default function TopBar({
     settings.sidebarVisible,
     setActiveDocument,
     zoomLevel,
+    onRefreshActive,
   ]);
 
   const toggleMenu = (menu: MenuName) => {
@@ -206,6 +213,15 @@ export default function TopBar({
                 </div>
               </div>
 
+              <MenuItem
+                label="Refresh"
+                shortcut="F5"
+                disabled={!activeDocumentId}
+                onClick={() => {
+                  setOpenMenu(null);
+                  onRefreshActive?.();
+                }}
+              />
               <div className="my-1 border-t border-zinc-700" />
               <MenuItem
                 label="Save"

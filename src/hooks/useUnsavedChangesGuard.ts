@@ -74,7 +74,8 @@ export function useUnsavedChangesGuard() {
       }
       // 'discard': continue to next
     }
-    // All resolved — save window state and close
+    // All resolved — save session, window state, and close
+    await useDocumentStore.getState().saveSession();
     await saveWindowState();
     const appWindow = getCurrentWindow();
     await appWindow.destroy();

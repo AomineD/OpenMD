@@ -7,6 +7,8 @@ export interface AppSettings {
   autoSaveIntervalSeconds: number;
   checkUpdatesOnStartup: boolean;
   sidebarVisible: boolean;
+  /** Which panel the sidebar shows: recent files or the document outline */
+  sidebarPanel: "recent" | "outline";
   wordWrap: boolean;
   fontSizeEditor: number;
 }
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoSaveIntervalSeconds: 10,
   checkUpdatesOnStartup: true,
   sidebarVisible: true,
+  sidebarPanel: "recent",
   wordWrap: true,
   fontSizeEditor: 14,
 };

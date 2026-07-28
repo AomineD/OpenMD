@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Editor, { loader, type Monaco } from "@monaco-editor/react";
 import * as monacoEditor from "monaco-editor";
 import type { editor } from "monaco-editor";
@@ -7,6 +7,7 @@ import type { editor } from "monaco-editor";
 loader.config({ monaco: monacoEditor });
 import { useDocumentStore } from "@/stores/documentStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { registerEditor, setEditorDocument } from "@/lib/editorBridge";
 
 interface MonacoEditorInnerProps {
   documentId: string;
@@ -77,9 +78,29 @@ export default function MonacoEditorInner({
   const documentIdRef = useRef(documentId);
   documentIdRef.current = documentId;
 
+  // Keep the bridge in step with which document is on screen, so an outline
+  // click can only reveal a line in the document it belongs to.
+  useEffect(() => {
+    setEditorDocument(documentId);
+  }, [documentId]);
+
+  useEffect(() => {
+    return () => {
+      registerEditor(null);
+    };
+  }, []);
+
   const handleBeforeMount = useCallback((monaco: Monaco) => {
     defineOpenMDTheme(monaco);
   }, []);
+
+  const handleMount = useCallback(
+    (instance: editor.IStandaloneCodeEditor) => {
+      registerEditor(instance);
+      setEditorDocument(documentIdRef.current);
+    },
+    []
+  );
 
   const handleChange = useCallback(
     (value: string | undefined) => {
@@ -99,6 +120,7 @@ export default function MonacoEditorInner({
       value={content}
       options={editorOptions}
       beforeMount={handleBeforeMount}
+      onMount={handleMount}
       onChange={handleChange}
     />
   );

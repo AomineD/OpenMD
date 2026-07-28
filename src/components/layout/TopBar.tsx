@@ -53,6 +53,12 @@ export default function TopBar({
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  /** Reveals the outline panel, opening the sidebar if it was collapsed. */
+  const showOutline = () => {
+    setSetting("sidebarPanel", "outline");
+    if (!settings.sidebarVisible) setSetting("sidebarVisible", true);
+  };
+
   const applyZoom = (delta: number) => {
     const next =
       delta === 0 ? 1.0 : Math.max(0.6, Math.min(2.0, zoomLevel + delta));
@@ -63,13 +69,21 @@ export default function TopBar({
   // Global keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey && e.key === "o") {
+      if (e.ctrlKey && !e.shiftKey && e.key === "o") {
         e.preventDefault();
         openFromDialog();
       }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        setSetting("sidebarPanel", "outline");
+        if (!settings.sidebarVisible) setSetting("sidebarVisible", true);
+      }
       if (e.ctrlKey && e.key === "w") {
         e.preventDefault();
-        if (activeDocumentId) guardedCloseDocument(activeDocumentId);
+        // A pinned tab hides its close button; the shortcut must agree
+        if (activeDocumentId && !activeDoc?.isPinned) {
+          guardedCloseDocument(activeDocumentId);
+        }
       }
       if (e.ctrlKey && !e.shiftKey && e.key === "s") {
         e.preventDefault();
@@ -128,6 +142,7 @@ export default function TopBar({
     documents,
     setMode,
     setSetting,
+    activeDoc?.isPinned,
     settings.sidebarVisible,
     setActiveDocument,
     zoomLevel,
@@ -293,6 +308,14 @@ export default function TopBar({
                 onClick={() => {
                   setOpenMenu(null);
                   setSetting("sidebarVisible", !settings.sidebarVisible);
+                }}
+              />
+              <MenuItem
+                label="Document Outline"
+                shortcut="Ctrl+Shift+O"
+                onClick={() => {
+                  setOpenMenu(null);
+                  showOutline();
                 }}
               />
               <div className="my-1 border-t border-zinc-700" />

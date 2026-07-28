@@ -20,7 +20,9 @@ export function useRefreshDocuments() {
       try {
         const fileExists = await exists(doc.path);
         if (!fileExists) {
-          closeDocument(docId);
+          // A pinned tab is only closed by unpinning it first — the file may be
+          // mid-checkout or on a drive that dropped out, and it should come back.
+          if (!doc.isPinned) closeDocument(docId);
           return "missing";
         }
         const newContent = await readMarkdownFile(doc.path);

@@ -36,7 +36,7 @@ export default function MainContent() {
   return (
     <main className="flex-1 overflow-hidden bg-zinc-950">
       {activeDocument.mode === "view" ? (
-        <MarkdownPreview content={activeDocument.content} />
+        <MarkdownPreview content={activeDocument.content} path={activeDocument.path} />
       ) : (
         <MonacoEditor
           documentId={activeDocument.id}

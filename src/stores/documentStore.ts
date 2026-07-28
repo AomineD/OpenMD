@@ -2,8 +2,10 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { exists } from "@tauri-apps/plugin-fs";
 import type { OpenDocument, SessionData } from "./types";
+import { SESSION_VERSION } from "./types";
 import { extractFileName, readMarkdownFile } from "@/lib/fileOperations";
 import { loadJSON, saveJSON } from "@/lib/persistence";
+import { useViewerStore } from "./viewerStore";
 
 interface DocumentState {
   documents: OpenDocument[];
@@ -21,8 +23,29 @@ interface DocumentState {
   setMode: (id: string, mode: "view" | "edit") => void;
   updatePath: (id: string, path: string, fileName: string) => void;
   refreshContent: (id: string, content: string) => void;
+  togglePin: (id: string) => void;
   saveSession: () => Promise<void>;
   restoreSession: () => Promise<void>;
+}
+
+/**
+ * Moves `id` so pinned documents always occupy the front of the array.
+ *
+ * Order is reordered physically rather than only at render time because
+ * Ctrl+Tab cycles by array index and `closeDocument` picks the left neighbour
+ * by index — if visual and array order diverged, both would misbehave.
+ */
+function reorderForPin(documents: OpenDocument[], id: string): OpenDocument[] {
+  const moving = documents.find((doc) => doc.id === id);
+  if (!moving) return documents;
+
+  const rest = documents.filter((doc) => doc.id !== id);
+  const pinnedCount = rest.filter((doc) => doc.isPinned).length;
+  // Pinning appends to the pinned block; unpinning lands at the head of the
+  // unpinned block, which keeps the tab next to where the eye already was.
+  const insertAt = pinnedCount;
+
+  return [...rest.slice(0, insertAt), moving, ...rest.slice(insertAt)];
 }
 
 export const useDocumentStore = create<DocumentState>()(
@@ -72,13 +95,38 @@ export const useDocumentStore = create<DocumentState>()(
 
       closeOtherDocuments: (id) => {
         set((state) => ({
-          documents: state.documents.filter((doc) => doc.id === id),
+          // Pinned tabs survive; the order-preserving filter keeps the
+          // pinned-first invariant without re-sorting.
+          documents: state.documents.filter((doc) => doc.id === id || doc.isPinned),
           activeDocumentId: id,
         }));
       },
 
       closeAllDocuments: () => {
-        set({ documents: [], activeDocumentId: null });
+        set((state) => {
+          const survivors = state.documents.filter((doc) => doc.isPinned);
+          if (survivors.length === 0) {
+            return { documents: [], activeDocumentId: null };
+          }
+          // Keep the active tab if it survived, otherwise fall back to the first
+          const stillActive = survivors.some((doc) => doc.id === state.activeDocumentId);
+          return {
+            documents: survivors,
+            activeDocumentId: stillActive ? state.activeDocumentId : survivors[0].id,
+          };
+        });
+      },
+
+      togglePin: (id) => {
+        set((state) => {
+          const flipped = state.documents.map((doc) =>
+            doc.id === id ? { ...doc, isPinned: !doc.isPinned } : doc
+          );
+          return { documents: reorderForPin(flipped, id) };
+        });
+        // Pinning is a deliberate, low-frequency act, and the session is
+        // otherwise only written on blur — don't lose it if the app is killed.
+        void get().saveSession();
       },
 
       setActiveDocument: (id) => {
@@ -134,8 +182,15 @@ export const useDocumentStore = create<DocumentState>()(
       saveSession: async () => {
         const { documents, activeDocumentId } = get();
         const activeDoc = documents.find((d) => d.id === activeDocumentId);
+        const { anchors } = useViewerStore.getState();
         const session: SessionData = {
-          tabs: documents.map((d) => ({ path: d.path, mode: d.mode })),
+          version: SESSION_VERSION,
+          tabs: documents.map((d) => ({
+            path: d.path,
+            mode: d.mode,
+            isPinned: d.isPinned,
+            scrollTop: anchors[d.path]?.top,
+          })),
           activeTabPath: activeDoc?.path ?? null,
         };
         await saveJSON("open-tabs.json", session);
@@ -146,9 +201,12 @@ export const useDocumentStore = create<DocumentState>()(
           tabs: [],
           activeTabPath: null,
         });
-        if (session.tabs.length === 0) return;
+        // Sessions written before versioning only ever gained optional fields,
+        // so they load as-is. Anything unreadable already fell back above.
+        if (!Array.isArray(session.tabs) || session.tabs.length === 0) return;
 
         const openedDocs: OpenDocument[] = [];
+        const anchors: Record<string, { top: number; slug: null; offset: number }> = {};
 
         for (const tab of session.tabs) {
           try {
@@ -163,7 +221,11 @@ export const useDocumentStore = create<DocumentState>()(
               mode: tab.mode,
               isDirty: false,
               openedAt: Date.now(),
+              isPinned: tab.isPinned,
             });
+            if (typeof tab.scrollTop === "number" && tab.scrollTop > 0) {
+              anchors[tab.path] = { top: tab.scrollTop, slug: null, offset: 0 };
+            }
           } catch (e) {
             console.error("[documentStore] Failed to restore tab:", tab.path, e);
           }
@@ -171,13 +233,21 @@ export const useDocumentStore = create<DocumentState>()(
 
         if (openedDocs.length === 0) return;
 
+        // Re-establish the pinned-first invariant defensively: the file could
+        // have been hand-edited into an interleaved order.
+        const ordered = [
+          ...openedDocs.filter((d) => d.isPinned),
+          ...openedDocs.filter((d) => !d.isPinned),
+        ];
+
         const activeDoc = session.activeTabPath
-          ? openedDocs.find((d) => d.path === session.activeTabPath)
+          ? ordered.find((d) => d.path === session.activeTabPath)
           : null;
 
+        useViewerStore.getState().hydrateAnchors(anchors);
         set({
-          documents: openedDocs,
-          activeDocumentId: activeDoc?.id ?? openedDocs[0].id,
+          documents: ordered,
+          activeDocumentId: activeDoc?.id ?? ordered[0].id,
         });
       },
     }),

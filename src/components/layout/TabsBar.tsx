@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useUnsavedGuard } from "@/contexts/unsavedGuardContext";
 import { useRefreshDocuments } from "@/hooks/useRefreshDocuments";
-import { X, RefreshCw } from "lucide-react";
+import { X, RefreshCw, Pin } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -19,9 +19,17 @@ export default function TabsBar() {
     (state) => state.closeOtherDocuments
   );
   const closeAllDocuments = useDocumentStore((state) => state.closeAllDocuments);
+  const togglePin = useDocumentStore((state) => state.togglePin);
   const { guardedCloseDocument } = useUnsavedGuard();
   const { refreshActiveDocument, refreshSingleDocument } = useRefreshDocuments();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const activeTabRef = useRef<HTMLDivElement>(null);
+
+  // Pinning reorders the strip, and the strip scrolls horizontally — without
+  // this the active tab can end up off-screen after a pin or a Ctrl+Tab.
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeDocumentId, documents]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -50,6 +58,7 @@ export default function TabsBar() {
             <ContextMenuTrigger asChild>
               <div
                 role="tab"
+                ref={isActive ? activeTabRef : undefined}
                 aria-selected={isActive}
                 onClick={() => setActiveDocument(doc.id)}
                 className={[
@@ -75,26 +84,47 @@ export default function TabsBar() {
                   {doc.fileName}
                 </span>
 
-                {/* Close button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    guardedCloseDocument(doc.id);
-                  }}
-                  className={[
-                    "rounded p-0.5 transition-colors",
-                    isActive
-                      ? "text-slate-400 hover:text-slate-50 hover:bg-zinc-800"
-                      : "text-transparent group-hover:text-slate-500 hover:!text-slate-50 hover:bg-zinc-700",
-                  ].join(" ")}
-                  title="Close tab"
-                >
-                  <X size={12} />
-                </button>
+                {/* Pinned tabs swap the close button for an unpin control, so
+                    the slot keeps its width and closing needs an explicit unpin */}
+                {doc.isPinned ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePin(doc.id);
+                    }}
+                    className="rounded p-0.5 text-cyan-400 hover:text-cyan-300 hover:bg-zinc-800 transition-colors"
+                    title="Unpin tab"
+                  >
+                    <Pin size={12} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      guardedCloseDocument(doc.id);
+                    }}
+                    className={[
+                      "rounded p-0.5 transition-colors",
+                      isActive
+                        ? "text-slate-400 hover:text-slate-50 hover:bg-zinc-800"
+                        : "text-transparent group-hover:text-slate-500 hover:!text-slate-50 hover:bg-zinc-700",
+                    ].join(" ")}
+                    title="Close tab"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
             </ContextMenuTrigger>
 
             <ContextMenuContent className="bg-zinc-900 border-zinc-700 text-slate-200 min-w-40">
+              <ContextMenuItem
+                onClick={() => togglePin(doc.id)}
+                className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer"
+              >
+                {doc.isPinned ? "Unpin Tab" : "Pin Tab"}
+              </ContextMenuItem>
+              <ContextMenuSeparator className="bg-zinc-700" />
               <ContextMenuItem
                 onClick={() => refreshSingleDocument(doc.id)}
                 className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer"
@@ -106,6 +136,7 @@ export default function TabsBar() {
               <ContextMenuItem
                 onClick={() => guardedCloseDocument(doc.id)}
                 className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer"
+                disabled={doc.isPinned}
               >
                 Close
               </ContextMenuItem>
